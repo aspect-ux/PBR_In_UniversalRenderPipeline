@@ -1,0 +1,63 @@
+float GeometrySchlickGGX(float NdotV, float roughness)
+{
+    float a = roughness;
+    //这里IBL和直接光照不一样
+    float k = (a * a) / 2.0;
+
+    float nom = NdotV;
+    float denom = NdotV * (1.0 - k) + k;
+
+    return nom / denom;
+}
+// ----------------------------------------------------------------------------
+float GeometrySmith(float3 N, float3 V, float3 L, float roughness)
+{
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+
+    return ggx1 * ggx2;
+}
+
+[numthreads(8, 8, 1)]
+void CSMainBRDF(uint3 id : SV_DispatchThreadID)
+{
+    float2 uv = (float2)id.xy / (float2)(_Resolution) + 0.5/ (float2)_Resolution;
+    uint index = id.y * _Resolution + id.x;
+   
+    float NdotV = uv.x;
+    float roughness = uv.y;
+    float3 V = float3(sqrt(1.0 - NdotV * NdotV),0, NdotV);
+
+    float scale = 0.0;
+    float bias = 0.0;
+
+    float3 N = float3(0.0, 0.0, 1.0);
+
+    const uint SAMPLE_COUNT = 2048;
+    for (uint i = 0; i < SAMPLE_COUNT; ++i)
+    {
+        float2 Xi = Hammersley(i, SAMPLE_COUNT);
+        float3 H = ImportanceSampleGGX(Xi, N, roughness);
+        float3 L = normalize(2.0 * dot(V, H) * H - V);
+
+        float NdotL = max(L.z, 0.0);
+        float NdotH = max(H.z, 0.0);
+        float VdotH = max(dot(V, H), 0.0);
+
+        if (NdotL > 0.0)
+        {
+            float G = GeometrySmith(N, V, L, roughness);
+            float G_Vis = (G * VdotH) / (NdotH * NdotV);
+            float Fc = pow(1.0 - VdotH, 5.0);
+
+            scale += (1.0 - Fc) * G_Vis;
+            bias += Fc * G_Vis;
+        }
+    }
+    scale /= float(SAMPLE_COUNT);
+    bias /= float(SAMPLE_COUNT);
+
+    _Reslut[index] = float4(scale, bias,0.0, 1.0);
+}
