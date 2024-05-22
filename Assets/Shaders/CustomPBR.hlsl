@@ -458,7 +458,7 @@ half4 frag(v2f i) : SV_Target
 
     // direct diffuse
     half3 KS = Direct_F;
-    half3 KD = (1 - KS) * (1 - metallic);
+    half3 KD = ((1 - KS)) * (1 - metallic);
     // return half4(KD, 1);
 
     half3 emissionColor = emissiveTex * pow(2, _Emissive);
